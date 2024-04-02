@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+// ill write my rust in camel case, WHO GONNA STOP ME
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Package {
     pub owner: String,
