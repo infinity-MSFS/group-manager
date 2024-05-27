@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-// ill write my rust in camel case, WHO GONNA STOP ME
-
-#[derive(Debug, Deserialize, Serialize)]
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Package {
     pub owner: String,
     pub repoName: String,
@@ -10,7 +9,8 @@ pub struct Package {
     pub fileName: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Project {
     pub name: String,
     pub version: String,
@@ -24,18 +24,18 @@ pub struct Project {
     pub package: Option<Package>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Palette {
     pub primary: String,
     pub secondary: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BetaProject {
     pub background: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GroupData {
     pub name: String,
     pub projects: Vec<Project>,

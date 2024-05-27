@@ -1,404 +1,290 @@
-use reqwest::blocking::Client;
-use serde_json::{from_value, to_value, Value};
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, Write};
+use std::io::Write;
 
-use crate::types::GroupData;
-
+use eframe::egui::{self, Color32, ComboBox, Id};
+use reqwest::Error;
+use serde::Serialize;
+use types::GroupData;
 mod types;
+use egui::ViewportCommand;
+use std::fs::{self, File};
+use std::sync::{Arc, Mutex};
 
-fn main() {
-    let client = Client::new();
+fn main() -> Result<(), eframe::Error> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 800.0])
+            .with_decorations(false)
+            .with_transparent(true),
+        ..Default::default()
+    };
 
-    let response = client
-        .get("https://raw.githubusercontent.com/infinity-MSFS/groups/main/groups.json")
-        .send()
-        .expect("Failed to send request");
+    eframe::run_native(
+        "Group Manager",
+        options,
+        Box::new(|c| {
+            egui_extras::install_image_loaders(&c.egui_ctx);
 
-    if response.status().is_success() {
-        let json_data: Value = response.json().expect("Failed to parse JSON");
+            Box::<JsonApp>::default()
+        }),
+    )
+}
 
-        let mut data: HashMap<String, GroupData> =
-            from_value(json_data).expect("Failed to deserialize JSON");
+#[derive(Debug, Clone)]
+struct JsonApp {
+    group_data: Arc<Mutex<HashMap<String, GroupData>>>,
+    data_fetched: bool,
+    selected_group: String,
+}
 
-        println!("Select a group to edit:");
-        for (index, (group_name, _)) in data.iter().enumerate() {
-            println!("({}) {}", index + 1, group_name);
+impl Default for JsonApp {
+    fn default() -> Self {
+        Self {
+            group_data: Arc::new(Mutex::new(HashMap::new())),
+            data_fetched: false,
+            selected_group: String::new(),
         }
+    }
+}
 
-        let mut input = String::new();
-        print!("Enter the number of the group to edit: ");
-        io::stdout().flush().unwrap();
-        io::stdin()
-            .read_line(&mut input)
-            .expect("Failed to read input");
+impl JsonApp {
+    fn add_group(&mut self, name: String, data: GroupData) {
+        let mut data_locked = self
+            .group_data
+            .lock()
+            .expect("failed to get a lock on group data - member function add_group()");
+        data_locked.insert(name, data);
+        drop(data_locked);
+    }
 
-        let choice: usize = input.trim().parse().expect("Invalid input");
+    fn remove_group(&mut self, name: String) {
+        let mut data_locked = self
+            .group_data
+            .lock()
+            .expect("failed to get a lock on group data - member function remove_group()");
+        data_locked.remove(&name);
+        drop(data_locked);
+    }
+    fn edit_group(&mut self, name: String, data: GroupData) {}
 
-        if choice > 0 && choice <= data.len() {
-            let selected_group_name = data.keys().nth(choice - 1).unwrap().clone();
-            let selected_group = data.get_mut(&selected_group_name).unwrap();
+    fn get_group_data(&self, name: String) -> Result<GroupData, String> {
+        let mut data_locked = self
+            .group_data
+            .lock()
+            .expect("failed to get a lock on group data - member function get_group_data()");
+        match data_locked.get(&name) {
+            Some(data) => Ok(data.clone()),
+            None => Err(format!("No group with provided name found")),
+        }
+    }
 
-            println!("Select a field to edit:");
-            println!("(1) Name");
-            println!("(2) Projects");
-            println!("(3) Beta");
-            println!("(4) Logo");
-            println!("(5) Update");
-            println!("(6) Path");
-            println!("(7) Palette");
-            print!("Enter the number of the field to edit: ");
-            io::stdout().flush().unwrap();
-            input.clear();
-            io::stdin()
-                .read_line(&mut input)
-                .expect("Failed to read input");
+    fn set_group_data(&mut self, data: HashMap<String, GroupData>) {
+        let mut data_locked = self
+            .group_data
+            .lock()
+            .expect("failed to get a lock on group data - member function set_group_data()");
+        *data_locked = data;
+        drop(data_locked);
+    }
+}
 
-            let field_choice: usize = input.trim().parse().expect("Invalid input");
+impl eframe::App for JsonApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Rgba::TRANSPARENT.to_array()
+    }
 
-            match field_choice {
-                1 => {
-                    println!("Current Name: {}", selected_group.name);
-                    print!("Enter new name: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    selected_group.name = input.trim().to_string();
-                    println!("Name updated successfully.");
-                }
-                2 => {
-                    println!("Select a project to edit:");
-                    for (index, project) in selected_group.projects.iter().enumerate() {
-                        println!("({}) {}", index + 1, project.name);
-                    }
-                    print!("Enter the number of the project to edit: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let mut style = (*ctx.style()).clone();
+        style.visuals.window_fill = Color32::from_rgb(0, 0, 0);
 
-                    let project_choice: usize = input.trim().parse().expect("Invalid input");
-
-                    if project_choice > 0 && project_choice <= selected_group.projects.len() {
-                        let selected_project = &mut selected_group.projects[project_choice - 1];
-
-                        println!("Select a field to edit:");
-                        println!("(1) Name");
-                        println!("(2) Version");
-                        println!("(3) Date");
-                        println!("(4) Changelog");
-                        println!("(5) Overview");
-                        println!("(6) Description");
-                        println!("(7) Background");
-                        println!("(8) Page Background");
-                        println!("(9) Variants");
-                        println!("(10) Package");
-
-                        print!("Enter the number of the field to edit: ");
-                        io::stdout().flush().unwrap();
-                        input.clear();
-                        io::stdin()
-                            .read_line(&mut input)
-                            .expect("Failed to read input");
-
-                        let field_choice: usize = input.trim().parse().expect("Invalid input");
-
-                        match field_choice {
-                            1 => {
-                                println!("Current Name: {}", selected_project.name);
-                                println!("Enter new name: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.name = input.trim().to_string();
-                                println!("Name updated successfully.");
-                            }
-                            2 => {
-                                println!("Current Version: {}", selected_project.version);
-                                print!("Enter new version: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.version = input.trim().to_string();
-                                println!("Version updated successfully.");
-                            }
-                            3 => {
-                                println!("Current Date: {}", selected_project.date);
-                                print!("Enter new date: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.date = input.trim().to_string();
-                                println!("Date updated successfully.");
-                            }
-                            4 => {
-                                println!("Current Changelog: {}", selected_project.changelog);
-                                print!("Enter new changelog: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.changelog = input.trim().to_string();
-                                println!("Changelog updated successfully.");
-                            }
-                            5 => {
-                                println!("Current Overview: {}", selected_project.overview);
-                                print!("Enter new overview: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.overview = input.trim().to_string();
-                                println!("Overview updated successfully.");
-                            }
-                            6 => {
-                                println!("Current Description: {}", selected_project.description);
-                                print!("Enter new description: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.description = input.trim().to_string();
-                                println!("Description updated successfully.");
-                            }
-                            7 => {
-                                println!("Current Background: {}", selected_project.background);
-                                print!("Enter new background: ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                selected_project.background = input.trim().to_string();
-                                println!("Background updated successfully.");
-                            }
-                            8 => {
-                                match &selected_project.pageBackground {
-                                    Some(value) => println!("Current Page Background: {}", value),
-                                    None => println!("Current Page Background: None"),
-                                }
-                                print!("Enter new page background (leave empty for None): ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                let new_page_background = input.trim().to_string();
-                                selected_project.pageBackground = if new_page_background.is_empty()
-                                {
-                                    None
-                                } else {
-                                    Some(new_page_background)
-                                };
-                                println!("Page Background updated successfully.");
-                            }
-                            9 => {
-                                match &selected_project.variants {
-                                    Some(variants) => {
-                                        println!("Current Variants:");
-                                        for (index, variant) in variants.iter().enumerate() {
-                                            println!("({}) {}", index + 1, variant);
-                                        }
-                                    }
-                                    None => println!("Current Variants: None"),
-                                }
-                                print!("Enter new variant (leave empty to keep it None): ");
-                                io::stdout().flush().unwrap();
-                                input.clear();
-                                io::stdin()
-                                    .read_line(&mut input)
-                                    .expect("Failed to read input");
-                                let new_variant = input.trim().to_string();
-                                selected_project.variants = if new_variant.is_empty() {
-                                    None
-                                } else {
-                                    Some(vec![new_variant])
-                                };
-                                println!("Variant updated successfully.");
-                            }
-                            10 => match &mut selected_project.package {
-                                Some(package) => {
-                                    println!("Current Package:");
-                                    println!("(1) Owner: {}", package.owner);
-                                    println!("(2) Repo Name: {}", package.repoName);
-                                    println!("(3) Version: {}", package.version);
-                                    println!("(4) File Name: {}", package.fileName);
-                                    print!("Enter the number of the field to edit: ");
-                                    io::stdout().flush().unwrap();
-                                    input.clear();
-                                    io::stdin()
-                                        .read_line(&mut input)
-                                        .expect("Failed to read input");
-
-                                    let field_choice: usize =
-                                        input.trim().parse().expect("Invalid input");
-
-                                    match field_choice {
-                                        1 => {
-                                            println!("Current Owner: {}", package.owner);
-                                            print!("Enter new owner: ");
-                                            io::stdout().flush().unwrap();
-                                            input.clear();
-                                            io::stdin()
-                                                .read_line(&mut input)
-                                                .expect("Failed to read input");
-                                            package.owner = input.trim().to_string();
-                                            println!("Owner updated successfully.");
-                                        }
-                                        2 => {
-                                            println!("Current Repo Name: {}", package.repoName);
-                                            print!("Enter new repo name: ");
-                                            io::stdout().flush().unwrap();
-                                            input.clear();
-                                            io::stdin()
-                                                .read_line(&mut input)
-                                                .expect("Failed to read input");
-                                            package.repoName = input.trim().to_string();
-                                            println!("Repo Name updated successfully.");
-                                        }
-                                        3 => {
-                                            println!("Current Version: {}", package.version);
-                                            print!("Enter new version: ");
-                                            io::stdout().flush().unwrap();
-                                            input.clear();
-                                            io::stdin()
-                                                .read_line(&mut input)
-                                                .expect("Failed to read input");
-                                            package.version = input.trim().to_string();
-                                            println!("Version updated successfully.");
-                                        }
-                                        4 => {
-                                            println!("Current File Name: {}", package.fileName);
-                                            print!("Enter new file name: ");
-                                            io::stdout().flush().unwrap();
-                                            input.clear();
-                                            io::stdin()
-                                                .read_line(&mut input)
-                                                .expect("Failed to read input");
-                                            package.fileName = input.trim().to_string();
-                                            println!("File Name updated successfully.");
-                                        }
-                                        _ => println!("Invalid field choice."),
-                                    }
-                                }
-                                None => println!("Current Package: None"),
-                            },
-                            _ => {
-                                println!("Invalid field choice.");
-                            }
+        custom_window_frame(ctx, "Infinity Manager", |ui| {
+            let group_data = self.group_data.clone();
+            ui.heading("Infinity Groups Manager");
+            let group_data_clone = group_data.clone();
+            if ui.button("Fetch group data from repo").clicked() {
+                let mut callback =
+                    move |result: Result<HashMap<String, GroupData>, String>| match result {
+                        Ok(data) => {
+                            let mut data_locked = group_data.lock().unwrap();
+                            *data_locked = data;
+                            drop(data_locked);
                         }
-                    } else {
-                        println!("Invalid project choice.");
+                        Err(e) => {
+                            eprintln!("error fetching: {}", e)
+                        }
+                    };
+
+                std::thread::spawn(move || {
+                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                    runtime.block_on(async move {
+                        let result = fetch_data().await;
+                        callback(result);
+                    })
+                });
+            }
+            let locked_data = self.group_data.lock().unwrap();
+            if !locked_data.is_empty() {
+                if ui.button("Output group.json file").clicked() {
+                    write_locked_data(locked_data.clone())
+                }
+                let mut selected_item = self.selected_group.clone();
+                let mut selected_item_string = String::new();
+                ComboBox::from_id_source(Id::new("Groups"))
+                    .selected_text(format!("Select Group"))
+                    .show_ui(ui, |ui| {
+                        for (name, _) in locked_data.iter() {
+                            ui.selectable_value(&mut selected_item, name.clone(), name);
+                        }
+                    });
+                self.selected_group = selected_item;
+                match locked_data.get(&self.selected_group.clone()) {
+                    Some(data) => {
+                        ui.label(format!("{:?}", data));
                     }
-                }
-                3 => {
-                    println!(
-                        "Current Beta Project Background: {}",
-                        selected_group.beta.background
-                    );
-                    print!("Enter new background for Beta Project: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    let new_background = input.trim().to_string();
-                    selected_group.beta.background = new_background;
-
-                    println!("Beta Project updated successfully.");
-                }
-                4 => {
-                    println!("Current Logo: {}", selected_group.logo);
-                    print!("Enter new logo URL: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    selected_group.logo = input.trim().to_string();
-                    println!("Logo updated successfully.");
-                }
-                5 => {
-                    println!("Current Update status: {:?}", selected_group.update);
-                    print!("Enter new update status (true/false): ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    let new_update_status = input.trim().parse().expect("Invalid input");
-                    selected_group.update = Some(new_update_status);
-                    println!("Update status updated successfully.");
-                }
-                6 => {
-                    println!("Current Path: {}", selected_group.path);
-                    print!("Enter new path: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    selected_group.path = input.trim().to_string();
-                    println!("Path updated successfully.");
-                }
-                7 => {
-                    println!("Current Primary Color: {}", selected_group.palette.primary);
-                    println!(
-                        "Current Secondary Color: {}",
-                        selected_group.palette.secondary
-                    );
-
-                    print!("Enter new primary color: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    let new_primary_color = input.trim().to_string();
-
-                    print!("Enter new secondary color: ");
-                    io::stdout().flush().unwrap();
-                    input.clear();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read input");
-                    let new_secondary_color = input.trim().to_string();
-
-                    selected_group.palette.primary = new_primary_color;
-                    selected_group.palette.secondary = new_secondary_color;
-
-                    println!("Palette updated successfully.");
-                }
-                _ => {
-                    println!("Invalid field choice.");
+                    None => (),
                 }
             }
+            drop(locked_data);
+        });
+    }
+}
 
-            let updated_json =
-                to_value(&data).expect("Failed to serialize data back to json, its really fucked");
+async fn fetch_data() -> Result<HashMap<String, GroupData>, String> {
+    let link = "https://raw.githubusercontent.com/infinity-MSFS/groups/main/groups.json";
 
-            let mut file = File::create("updated_groups.json").expect("Failed to create file");
-            file.write_all(updated_json.to_string().as_bytes())
-                .expect("Failed to write to file");
+    match reqwest::get(link).await {
+        Ok(request) => match request.json::<HashMap<String, GroupData>>().await {
+            Ok(data) => Ok(data),
+            Err(e) => Err(format!("Error deserializing: {}", e)),
+        },
+        Err(e) => Err(format!("Error fetching: {}", e)),
+    }
+}
 
-            println!("Data updated and written to updated_groups.json successfully. Push to github manually for now too lazy to add that atm");
-        } else {
-            println!("Invalid group choice. Please select a valid group number.");
+fn write_locked_data(data: HashMap<String, GroupData>) {
+    let json_data = serde_json::to_vec_pretty(&data).unwrap();
+
+    let mut file = File::create("groups.json").expect("failed to create file");
+
+    file.write_all(&json_data).expect("write error");
+}
+
+fn custom_window_frame(ctx: &egui::Context, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    use egui::*;
+
+    let panel_frame = egui::Frame {
+        fill: Color32::from_rgb(0, 0, 0),
+        rounding: 10.0.into(),
+        stroke: ctx.style().visuals.widgets.noninteractive.fg_stroke,
+        outer_margin: 0.5.into(), // so the stroke is within the bounds
+        ..Default::default()
+    };
+
+    CentralPanel::default().frame(panel_frame).show(ctx, |ui| {
+        let app_rect = ui.max_rect();
+
+        let title_bar_height = 32.0;
+        let title_bar_rect = {
+            let mut rect = app_rect;
+            rect.max.y = rect.min.y + title_bar_height;
+            rect
+        };
+        title_bar_ui(ui, title_bar_rect, title);
+
+        // Add the contents:
+        let content_rect = {
+            let mut rect = app_rect;
+            rect.min.y = title_bar_rect.max.y;
+            rect
+        }
+        .shrink(4.0);
+        let mut content_ui = ui.child_ui(content_rect, *ui.layout());
+        add_contents(&mut content_ui);
+    });
+}
+
+fn title_bar_ui(ui: &mut egui::Ui, title_bar_rect: eframe::epaint::Rect, title: &str) {
+    use egui::*;
+
+    let painter = ui.painter();
+
+    let title_bar_response = ui.interact(title_bar_rect, Id::new("title_bar"), Sense::click());
+
+    // Paint the title:
+    painter.text(
+        title_bar_rect.center(),
+        Align2::CENTER_CENTER,
+        title,
+        FontId::proportional(20.0),
+        ui.style().visuals.text_color(),
+    );
+
+    // Paint the line under the title:
+    painter.line_segment(
+        [
+            title_bar_rect.left_bottom() + vec2(1.0, 0.0),
+            title_bar_rect.right_bottom() + vec2(-1.0, 0.0),
+        ],
+        ui.visuals().widgets.noninteractive.bg_stroke,
+    );
+
+    if title_bar_response.double_clicked() {
+        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+        ui.ctx()
+            .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+    }
+
+    if title_bar_response.is_pointer_button_down_on() {
+        ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+    }
+
+    ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.visuals_mut().button_frame = false;
+            ui.add_space(8.0);
+            close_maximize_minimize(ui);
+        });
+    });
+}
+
+/// Show some close/maximize/minimize buttons for the native window.
+fn close_maximize_minimize(ui: &mut egui::Ui) {
+    use egui::{Button, RichText};
+
+    let button_height = 24.0;
+
+    let close_response = ui
+        .add(Button::new(RichText::new("❌").size(button_height)))
+        .on_hover_text("Close the window");
+    if close_response.clicked() {
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+    if is_maximized {
+        let maximized_response = ui
+            .add(Button::new(RichText::new("🗗").size(button_height)))
+            .on_hover_text("Restore window");
+        if maximized_response.clicked() {
+            ui.ctx()
+                .send_viewport_cmd(ViewportCommand::Maximized(false));
         }
     } else {
-        println!("Failed to fetch JSON data: {}", response.status());
+        let maximized_response = ui
+            .add(Button::new(RichText::new("🗗").size(button_height)))
+            .on_hover_text("Maximize window");
+        if maximized_response.clicked() {
+            ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(true));
+        }
+    }
+
+    let minimized_response = ui
+        .add(Button::new(RichText::new("🗕").size(button_height)))
+        .on_hover_text("Minimize the window");
+    if minimized_response.clicked() {
+        ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
     }
 }
