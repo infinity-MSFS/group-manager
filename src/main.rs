@@ -1,14 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use eframe::egui::{self, Color32, ComboBox, Id, Image, Vec2};
-use reqwest::Error;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
 use types::GroupData;
 mod types;
 use egui::ViewportCommand;
-use std::fs::{self, File};
+use std::fs::File;
 use std::sync::{Arc, Mutex};
 
 fn main() -> Result<(), eframe::Error> {
