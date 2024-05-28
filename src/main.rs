@@ -1,11 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::collections::HashMap;
-use std::io::Write;
-
-use eframe::egui::{self, Color32, ComboBox, Id};
+use eframe::egui::{self, Color32, ComboBox, Id, Image, Vec2};
 use reqwest::Error;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::io::Write;
 use types::GroupData;
 mod types;
 use egui::ViewportCommand;
@@ -24,9 +23,8 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Group Manager",
         options,
-        Box::new(|c| {
-            egui_extras::install_image_loaders(&c.egui_ctx);
-
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             Box::<JsonApp>::default()
         }),
     )
@@ -37,6 +35,7 @@ struct JsonApp {
     group_data: Arc<Mutex<HashMap<String, GroupData>>>,
     data_fetched: bool,
     selected_group: String,
+    selected_project: Option<usize>,
 }
 
 impl Default for JsonApp {
@@ -45,6 +44,7 @@ impl Default for JsonApp {
             group_data: Arc::new(Mutex::new(HashMap::new())),
             data_fetched: false,
             selected_group: String::new(),
+            selected_project: None,
         }
     }
 }
@@ -100,53 +100,189 @@ impl eframe::App for JsonApp {
         style.visuals.window_fill = Color32::from_rgb(0, 0, 0);
 
         custom_window_frame(ctx, "Infinity Manager", |ui| {
-            let group_data = self.group_data.clone();
-            ui.heading("Infinity Groups Manager");
-            let group_data_clone = group_data.clone();
-            if ui.button("Fetch group data from repo").clicked() {
-                let mut callback =
-                    move |result: Result<HashMap<String, GroupData>, String>| match result {
-                        Ok(data) => {
-                            let mut data_locked = group_data.lock().unwrap();
-                            *data_locked = data;
-                            drop(data_locked);
-                        }
-                        Err(e) => {
-                            eprintln!("error fetching: {}", e)
-                        }
-                    };
+            egui::ScrollArea::both()
+                .drag_to_scroll(true)
+                .animated(true)
+                .enable_scrolling(true)
+                .show(ui, |ui| {
+                    let group_data = self.group_data.clone();
 
-                std::thread::spawn(move || {
-                    let runtime = tokio::runtime::Runtime::new().unwrap();
-                    runtime.block_on(async move {
-                        let result = fetch_data().await;
-                        callback(result);
-                    })
-                });
-            }
-            let locked_data = self.group_data.lock().unwrap();
-            if !locked_data.is_empty() {
-                if ui.button("Output group.json file").clicked() {
-                    write_locked_data(locked_data.clone())
-                }
-                let mut selected_item = self.selected_group.clone();
-                let mut selected_item_string = String::new();
-                ComboBox::from_id_source(Id::new("Groups"))
-                    .selected_text(format!("Select Group"))
-                    .show_ui(ui, |ui| {
-                        for (name, _) in locked_data.iter() {
-                            ui.selectable_value(&mut selected_item, name.clone(), name);
-                        }
-                    });
-                self.selected_group = selected_item;
-                match locked_data.get(&self.selected_group.clone()) {
-                    Some(data) => {
-                        ui.label(format!("{:?}", data));
+                    ui.heading("Infinity Groups Manager");
+                    let group_data_clone = group_data.clone();
+                    if ui.button("Fetch group data from repo").clicked() {
+                        let mut callback = move |result: Result<
+                            HashMap<String, GroupData>,
+                            String,
+                        >| match result {
+                            Ok(data) => {
+                                let mut data_locked = group_data.lock().unwrap();
+                                *data_locked = data;
+                                drop(data_locked);
+                            }
+                            Err(e) => {
+                                eprintln!("error fetching: {}", e)
+                            }
+                        };
+
+                        std::thread::spawn(move || {
+                            let runtime = tokio::runtime::Runtime::new().unwrap();
+                            runtime.block_on(async move {
+                                let result = fetch_data().await;
+                                callback(result);
+                            })
+                        });
                     }
-                    None => (),
-                }
-            }
-            drop(locked_data);
+                    let mut locked_data = self.group_data.lock().unwrap();
+                    if !locked_data.is_empty() {
+                        let mut selected_item = self.selected_group.clone();
+                        ui.horizontal(|ui: &mut egui::Ui| {
+                            if ui.button("Output group.json file").clicked() {
+                                write_locked_data(locked_data.clone())
+                            }
+
+                            ComboBox::from_id_source(Id::new("Groups"))
+                                .selected_text(format!("Select Group"))
+                                .show_ui(ui, |ui| {
+                                    for (name, _) in locked_data.iter() {
+                                        ui.selectable_value(&mut selected_item, name.clone(), name);
+                                    }
+                                });
+                        });
+
+                        if self.selected_group != selected_item {
+                            self.selected_group = selected_item.clone();
+                            self.selected_project = None;
+                        }
+
+                        self.selected_group = selected_item;
+
+                        if !self.selected_group.is_empty() {
+                            let data = locked_data.get_mut(&self.selected_group).unwrap();
+                            ui.heading(format!("Project: {}", data.name));
+                            ui.separator();
+                            ui.heading("Projects");
+                            let mut selected_project = self.selected_project.unwrap_or_default();
+                            ComboBox::from_id_source(Id::new("Projects"))
+                                .selected_text("Select Project")
+                                .show_ui(ui, |ui| {
+                                    for (index, project) in data.projects.iter().enumerate() {
+                                        ui.selectable_value(
+                                            &mut selected_project,
+                                            index,
+                                            project.name.clone(),
+                                        );
+                                    }
+                                });
+                            self.selected_project = Some(selected_project);
+
+                            if let Some(index) = self.selected_project {
+                                if index < data.projects.len() {
+                                    ui.separator();
+                                    ui.heading(format!("Project: {}", data.projects[index].name));
+
+                                    ui.horizontal(|ui| {
+                                        ui.label("Version");
+                                        ui.text_edit_singleline(&mut data.projects[index].version);
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Date");
+                                        ui.text_edit_singleline(&mut data.projects[index].date);
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Changelog");
+                                        ui.text_edit_multiline(&mut data.projects[index].changelog);
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Overview");
+                                        ui.text_edit_multiline(&mut data.projects[index].overview);
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Description");
+                                        ui.text_edit_multiline(
+                                            &mut data.projects[index].description,
+                                        );
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Background");
+                                        ui.text_edit_singleline(
+                                            &mut data.projects[index].background,
+                                        );
+                                    });
+                                    ui.add(
+                                        Image::new(data.projects[index].background.clone())
+                                            .max_width(100.0),
+                                    );
+
+                                    if let Some(package) = data.projects[index].package.as_mut() {
+                                        ui.heading("Package");
+                                        ui.separator();
+                                        ui.horizontal(|ui| {
+                                            ui.label("Owner");
+                                            ui.text_edit_singleline(&mut package.owner);
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Repo Name");
+                                            ui.text_edit_singleline(&mut package.repoName);
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Version");
+                                            ui.text_edit_singleline(&mut package.version);
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("File Name");
+                                            ui.text_edit_singleline(&mut package.fileName);
+                                        });
+                                    }
+                                }
+                            }
+
+                            ui.separator();
+                            ui.heading("Beta");
+                            ui.horizontal(|ui| {
+                                ui.text_edit_multiline(&mut data.beta.background);
+                                ui.add(Image::new(data.beta.background.clone()).max_width(100.0));
+                            });
+
+                            ui.separator();
+                            ui.heading(format!("Logo"));
+                            ui.horizontal(|ui| {
+                                ui.text_edit_multiline(&mut data.logo);
+                                ui.add(Image::new(data.logo.clone()).max_width(100.0));
+                            });
+
+                            ui.separator();
+                            if let Some(logo) = data.update {
+                                ui.label(format!("Update: {}", logo.to_string()));
+                            }
+                            ui.separator();
+                            ui.label(format!("Path: {}", data.path));
+                            ui.separator();
+                            ui.heading("Palette");
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Primary:"));
+                                ui.text_edit_singleline(&mut data.palette.primary);
+                                let rgb = hex_to_rgb(&data.palette.primary);
+                                egui::widgets::color_picker::show_color(
+                                    ui,
+                                    Color32::from_rgb(rgb.0, rgb.1, rgb.2),
+                                    Vec2::new(50.0, 50.0),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Secondary:"));
+                                ui.text_edit_singleline(&mut data.palette.secondary);
+
+                                let rgb = hex_to_rgb(&data.palette.secondary);
+                                egui::widgets::color_picker::show_color(
+                                    ui,
+                                    Color32::from_rgb(rgb.0, rgb.1, rgb.2),
+                                    Vec2::new(50.0, 50.0),
+                                );
+                            });
+                        }
+                        drop(locked_data);
+                    }
+                });
         });
     }
 }
@@ -250,7 +386,6 @@ fn title_bar_ui(ui: &mut egui::Ui, title_bar_rect: eframe::epaint::Rect, title: 
     });
 }
 
-/// Show some close/maximize/minimize buttons for the native window.
 fn close_maximize_minimize(ui: &mut egui::Ui) {
     use egui::{Button, RichText};
 
@@ -287,4 +422,12 @@ fn close_maximize_minimize(ui: &mut egui::Ui) {
     if minimized_response.clicked() {
         ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
     }
+}
+
+fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
+    let r = u8::from_str_radix(&hex[1..3], 16).ok().unwrap();
+    let g = u8::from_str_radix(&hex[3..5], 16).ok().unwrap();
+    let b = u8::from_str_radix(&hex[5..7], 16).ok().unwrap();
+
+    (r, g, b)
 }
