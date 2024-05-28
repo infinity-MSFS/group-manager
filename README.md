@@ -1,3 +1,6 @@
 ## how to use:
+download a prebuilt binary or just `cargo run`
 
-press the buttons, make the changes, updated_groups.json will be generated, just copy the ENTIRE document and replace ALL OF THE CONTENTS groups.json in your local repo. (the one that got created from `git clone https://github.com/infinity-MSFS/groups.git` ) then push your changes, wait like 30 secs between changes because sometimes github raw is shit. ill make the app more idiot proof later but i trust we are smart enough not to break everything RIGHT?
+press the buttons, make the changes, an updated groups.json will be generated,
+
+submit a PR to the group repo with your updated file, every update will require repo maintainer review so feel free to assign them
