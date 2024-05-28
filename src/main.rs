@@ -33,7 +33,6 @@ fn main() -> Result<(), eframe::Error> {
 #[derive(Debug, Clone)]
 struct JsonApp {
     group_data: Arc<Mutex<HashMap<String, GroupData>>>,
-    data_fetched: bool,
     selected_group: String,
     selected_project: Option<usize>,
 }
@@ -42,51 +41,9 @@ impl Default for JsonApp {
     fn default() -> Self {
         Self {
             group_data: Arc::new(Mutex::new(HashMap::new())),
-            data_fetched: false,
             selected_group: String::new(),
             selected_project: None,
         }
-    }
-}
-
-impl JsonApp {
-    fn add_group(&mut self, name: String, data: GroupData) {
-        let mut data_locked = self
-            .group_data
-            .lock()
-            .expect("failed to get a lock on group data - member function add_group()");
-        data_locked.insert(name, data);
-        drop(data_locked);
-    }
-
-    fn remove_group(&mut self, name: String) {
-        let mut data_locked = self
-            .group_data
-            .lock()
-            .expect("failed to get a lock on group data - member function remove_group()");
-        data_locked.remove(&name);
-        drop(data_locked);
-    }
-    fn edit_group(&mut self, name: String, data: GroupData) {}
-
-    fn get_group_data(&self, name: String) -> Result<GroupData, String> {
-        let mut data_locked = self
-            .group_data
-            .lock()
-            .expect("failed to get a lock on group data - member function get_group_data()");
-        match data_locked.get(&name) {
-            Some(data) => Ok(data.clone()),
-            None => Err(format!("No group with provided name found")),
-        }
-    }
-
-    fn set_group_data(&mut self, data: HashMap<String, GroupData>) {
-        let mut data_locked = self
-            .group_data
-            .lock()
-            .expect("failed to get a lock on group data - member function set_group_data()");
-        *data_locked = data;
-        drop(data_locked);
     }
 }
 
@@ -95,7 +52,7 @@ impl eframe::App for JsonApp {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut style = (*ctx.style()).clone();
         style.visuals.window_fill = Color32::from_rgb(0, 0, 0);
 
@@ -108,19 +65,18 @@ impl eframe::App for JsonApp {
                     let group_data = self.group_data.clone();
 
                     ui.heading("Infinity Groups Manager");
-                    let group_data_clone = group_data.clone();
+
                     if ui.button("Fetch group data from repo").clicked() {
-                        let mut callback = move |result: Result<
-                            HashMap<String, GroupData>,
-                            String,
-                        >| match result {
-                            Ok(data) => {
-                                let mut data_locked = group_data.lock().unwrap();
-                                *data_locked = data;
-                                drop(data_locked);
-                            }
-                            Err(e) => {
-                                eprintln!("error fetching: {}", e)
+                        let callback = move |result: Result<HashMap<String, GroupData>, String>| {
+                            match result {
+                                Ok(data) => {
+                                    let mut data_locked = group_data.lock().unwrap();
+                                    *data_locked = data;
+                                    drop(data_locked);
+                                }
+                                Err(e) => {
+                                    eprintln!("error fetching: {}", e)
+                                }
                             }
                         };
 
