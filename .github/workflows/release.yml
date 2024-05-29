@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*.*.*" # This triggers the workflow when a tag with format v1.2.3 is pushed
+      - "v*.*.*"
 
 jobs:
   build:
@@ -40,6 +40,7 @@ jobs:
           path: .
 
       - name: Create GitHub Release
+        id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,7 +55,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # Correctly reference the upload_url output
           asset_path: ./group-json-manager.exe
           asset_name: group-json-manager.exe
           asset_content_type: application/octet-stream
