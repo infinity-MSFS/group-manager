@@ -1,9 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use eframe::egui::{self, Color32, ComboBox, Id, Image, Vec2};
+use eframe::egui::{self, Color32, ComboBox, Id, Image, Label, Pos2, TextEdit, Vec2, Window};
 use std::collections::HashMap;
 use std::io::Write;
-use types::GroupData;
+use types::{GroupData, Project};
 mod types;
 use egui::ViewportCommand;
 use std::fs::File;
@@ -33,6 +33,8 @@ struct JsonApp {
     group_data: Arc<Mutex<HashMap<String, GroupData>>>,
     selected_group: String,
     selected_project: Option<usize>,
+    new_group_name: String,
+    new_project_name: String,
 }
 
 impl Default for JsonApp {
@@ -41,6 +43,8 @@ impl Default for JsonApp {
             group_data: Arc::new(Mutex::new(HashMap::new())),
             selected_group: String::new(),
             selected_project: None,
+            new_group_name: String::new(),
+            new_project_name: String::new(),
         }
     }
 }
@@ -88,6 +92,18 @@ impl eframe::App for JsonApp {
                     }
                     let mut locked_data = self.group_data.lock().unwrap();
                     if !locked_data.is_empty() {
+                        ui.horizontal(|ui| {
+                            ui.label("New group name:");
+                            ui.text_edit_singleline(&mut self.new_group_name);
+                            if ui.button("Add Group").clicked() {
+                                locked_data.insert(
+                                    self.new_group_name.clone(),
+                                    GroupData::new(self.new_group_name.clone()),
+                                );
+                                self.new_group_name.clear();
+                            }
+                        });
+
                         let mut selected_item = self.selected_group.clone();
                         ui.horizontal(|ui: &mut egui::Ui| {
                             if ui.button("Output group.json file").clicked() {
@@ -112,9 +128,18 @@ impl eframe::App for JsonApp {
 
                         if !self.selected_group.is_empty() {
                             let data = locked_data.get_mut(&self.selected_group).unwrap();
-                            ui.heading(format!("Project: {}", data.name));
+                            ui.heading(format!("Group: {}", data.name));
                             ui.separator();
                             ui.heading("Projects");
+
+                            ui.label("New Project Name:");
+                            ui.text_edit_singleline(&mut self.new_project_name);
+                            if ui.button("Add Project").clicked() {
+                                data.projects
+                                    .push(Project::new(self.new_project_name.clone()));
+                                self.new_project_name.clear();
+                            }
+
                             let mut selected_project = self.selected_project.unwrap_or_default();
                             ComboBox::from_id_source(Id::new("Projects"))
                                 .selected_text("Select Project")
@@ -130,62 +155,75 @@ impl eframe::App for JsonApp {
                             self.selected_project = Some(selected_project);
 
                             if let Some(index) = self.selected_project {
-                                if index < data.projects.len() {
-                                    ui.separator();
-                                    ui.heading(format!("Project: {}", data.projects[index].name));
-
-                                    ui.horizontal(|ui| {
-                                        ui.label("Version");
-                                        ui.text_edit_singleline(&mut data.projects[index].version);
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Date");
-                                        ui.text_edit_singleline(&mut data.projects[index].date);
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Changelog");
-                                        ui.text_edit_multiline(&mut data.projects[index].changelog);
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Overview");
-                                        ui.text_edit_multiline(&mut data.projects[index].overview);
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Description");
-                                        ui.text_edit_multiline(
-                                            &mut data.projects[index].description,
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Background");
-                                        ui.text_edit_singleline(
-                                            &mut data.projects[index].background,
-                                        );
-                                    });
-                                    ui.add(
-                                        Image::new(data.projects[index].background.clone())
-                                            .max_width(100.0),
-                                    );
-
-                                    if let Some(package) = data.projects[index].package.as_mut() {
-                                        ui.heading("Package");
+                                if !data.projects.is_empty() {
+                                    if index < data.projects.len() {
                                         ui.separator();
-                                        ui.horizontal(|ui| {
-                                            ui.label("Owner");
-                                            ui.text_edit_singleline(&mut package.owner);
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Repo Name");
-                                            ui.text_edit_singleline(&mut package.repoName);
-                                        });
+                                        ui.heading(format!(
+                                            "Project: {}",
+                                            data.projects[index].name
+                                        ));
+
                                         ui.horizontal(|ui| {
                                             ui.label("Version");
-                                            ui.text_edit_singleline(&mut package.version);
+                                            ui.text_edit_singleline(
+                                                &mut data.projects[index].version,
+                                            );
                                         });
                                         ui.horizontal(|ui| {
-                                            ui.label("File Name");
-                                            ui.text_edit_singleline(&mut package.fileName);
+                                            ui.label("Date");
+                                            ui.text_edit_singleline(&mut data.projects[index].date);
                                         });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Changelog");
+                                            ui.text_edit_multiline(
+                                                &mut data.projects[index].changelog,
+                                            );
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Overview");
+                                            ui.text_edit_multiline(
+                                                &mut data.projects[index].overview,
+                                            );
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Description");
+                                            ui.text_edit_multiline(
+                                                &mut data.projects[index].description,
+                                            );
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Background");
+                                            ui.text_edit_singleline(
+                                                &mut data.projects[index].background,
+                                            );
+                                        });
+                                        ui.add(
+                                            Image::new(data.projects[index].background.clone())
+                                                .max_width(100.0),
+                                        );
+
+                                        if let Some(package) = data.projects[index].package.as_mut()
+                                        {
+                                            ui.heading("Package");
+                                            if ui.button("Add Package").clicked() {}
+                                            ui.separator();
+                                            ui.horizontal(|ui| {
+                                                ui.label("Owner");
+                                                ui.text_edit_singleline(&mut package.owner);
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.label("Repo Name");
+                                                ui.text_edit_singleline(&mut package.repoName);
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.label("Version");
+                                                ui.text_edit_singleline(&mut package.version);
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.label("File Name");
+                                                ui.text_edit_singleline(&mut package.fileName);
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -205,33 +243,40 @@ impl eframe::App for JsonApp {
                             });
 
                             ui.separator();
-                            if let Some(logo) = data.update {
-                                ui.label(format!("Update: {}", logo.to_string()));
+                            if let Some(mut data) = data.update.as_mut() {
+                                ui.checkbox(&mut data, "Update");
                             }
                             ui.separator();
-                            ui.label(format!("Path: {}", data.path));
+                            ui.horizontal(|ui| {
+                                ui.label("Path");
+                                ui.text_edit_singleline(&mut data.path);
+                            });
                             ui.separator();
                             ui.heading("Palette");
                             ui.horizontal(|ui| {
                                 ui.label(format!("Primary:"));
                                 ui.text_edit_singleline(&mut data.palette.primary);
-                                let rgb = hex_to_rgb(&data.palette.primary);
-                                egui::widgets::color_picker::show_color(
-                                    ui,
-                                    Color32::from_rgb(rgb.0, rgb.1, rgb.2),
-                                    Vec2::new(50.0, 50.0),
-                                );
+                                if !data.palette.primary.is_empty() {
+                                    let rgb = hex_to_rgb(&data.palette.primary);
+                                    egui::widgets::color_picker::show_color(
+                                        ui,
+                                        Color32::from_rgb(rgb.0, rgb.1, rgb.2),
+                                        Vec2::new(50.0, 50.0),
+                                    );
+                                }
                             });
                             ui.horizontal(|ui| {
                                 ui.label(format!("Secondary:"));
                                 ui.text_edit_singleline(&mut data.palette.secondary);
 
-                                let rgb = hex_to_rgb(&data.palette.secondary);
-                                egui::widgets::color_picker::show_color(
-                                    ui,
-                                    Color32::from_rgb(rgb.0, rgb.1, rgb.2),
-                                    Vec2::new(50.0, 50.0),
-                                );
+                                if !data.palette.secondary.is_empty() {
+                                    let rgb = hex_to_rgb(&data.palette.secondary);
+                                    egui::widgets::color_picker::show_color(
+                                        ui,
+                                        Color32::from_rgb(rgb.0, rgb.1, rgb.2),
+                                        Vec2::new(50.0, 50.0),
+                                    );
+                                }
                             });
                         }
                         drop(locked_data);

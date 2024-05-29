@@ -23,6 +23,22 @@ pub struct Project {
     pub variants: Option<Vec<String>>,
     pub package: Option<Package>,
 }
+impl Project {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            version: String::new(),
+            date: String::new(),
+            changelog: String::new(),
+            overview: String::new(),
+            description: String::new(),
+            background: String::new(),
+            pageBackground: None,
+            variants: None,
+            package: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Palette {
@@ -44,4 +60,23 @@ pub struct GroupData {
     pub update: Option<bool>,
     pub path: String,
     pub palette: Palette,
+}
+
+impl GroupData {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            projects: Vec::new(),
+            beta: BetaProject {
+                background: String::new(),
+            },
+            logo: String::new(),
+            update: None,
+            path: String::new(),
+            palette: Palette {
+                primary: String::new(),
+                secondary: String::new(),
+            },
+        }
+    }
 }
