@@ -1,0 +1,60 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # This triggers the workflow when a tag with format v1.2.3 is pushed
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Build the project
+        run: cargo build --release
+
+      - name: Archive build output
+        uses: actions/upload-artifact@v3
+        with:
+          name: group-json-manager
+          path: target/release/group-json-manager.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build output
+        uses: actions/download-artifact@v3
+        with:
+          name: group-json-manager
+          path: .
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./group-json-manager.exe
+          asset_name: group-json-manager.exe
+          asset_content_type: application/octet-stream
