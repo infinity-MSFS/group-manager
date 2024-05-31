@@ -192,15 +192,21 @@ impl eframe::App for JsonApp {
                                             );
                                         });
                                         ui.horizontal(|ui| {
+                                            ui.set_width(500.0);
                                             ui.label("Background");
                                             ui.text_edit_singleline(
                                                 &mut data.projects[index].background,
                                             );
+                                            ui.add(
+                                                Image::new(
+                                                    data.projects[index]
+                                                        .background
+                                                        .clone()
+                                                        .replace("webp", "png"),
+                                                )
+                                                .max_width(400.0),
+                                            );
                                         });
-                                        ui.add(
-                                            Image::new(data.projects[index].background.clone())
-                                                .max_width(100.0),
-                                        );
 
                                         if let Some(package) = data.projects[index].package.as_mut()
                                         {
@@ -232,14 +238,20 @@ impl eframe::App for JsonApp {
                             ui.heading("Beta");
                             ui.horizontal(|ui| {
                                 ui.text_edit_multiline(&mut data.beta.background);
-                                ui.add(Image::new(data.beta.background.clone()).max_width(100.0));
+                                ui.add(
+                                    Image::new(data.beta.background.clone().replace("webp", "png"))
+                                        .max_width(100.0),
+                                );
                             });
 
                             ui.separator();
                             ui.heading(format!("Logo"));
                             ui.horizontal(|ui| {
                                 ui.text_edit_multiline(&mut data.logo);
-                                ui.add(Image::new(data.logo.clone()).max_width(100.0));
+                                ui.add(
+                                    Image::new(data.logo.clone().replace("webp", "png"))
+                                        .max_width(100.0),
+                                );
                             });
 
                             ui.separator();
