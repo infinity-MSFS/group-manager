@@ -60,6 +60,7 @@ pub struct GroupData {
     pub update: Option<bool>,
     pub path: String,
     pub palette: Palette,
+    pub hide: Option<bool>,
 }
 
 impl GroupData {
@@ -77,6 +78,7 @@ impl GroupData {
                 primary: String::new(),
                 secondary: String::new(),
             },
+            hide: None,
         }
     }
 }

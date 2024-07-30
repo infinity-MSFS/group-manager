@@ -290,6 +290,14 @@ impl eframe::App for JsonApp {
                                     );
                                 }
                             });
+                            ui.horizontal(|ui| {
+                                if data.hide.is_none() {
+                                    data.hide = Some(false);
+                                }
+                                let mut checkbox_state = data.hide.unwrap();
+                                ui.checkbox(&mut checkbox_state, "Hide Group");
+                                data.hide = Some(checkbox_state);
+                            });
                         }
                         drop(locked_data);
                     }
